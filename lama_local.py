@@ -18,7 +18,7 @@ def valid_model():
 def install():
     from baixar_modelos import get_json, download
     if valid_model():
-        print('LaMa ja instalado e validado.', flush=True)
+        print('LaMa is already installed and verified.', flush=True)
         return
     release = get_json('https://api.github.com/repos/Sanster/models/releases/tags/add_big_lama')
     asset = next(a for a in release['assets'] if a['name']=='big-lama.pt')
@@ -28,16 +28,16 @@ def install():
     download(URL, MODEL, asset['size'], digest[7:] if digest.startswith('sha256:') else None)
     if not valid_model():
         MODEL.unlink()
-        raise RuntimeError('O modelo LaMa falhou na verificacao. Execute BAIXAR_LAMA.cmd novamente.')
+        raise RuntimeError('LaMa model verification failed. Run BAIXAR_LAMA.cmd again.')
 
 
 def inpaint(image, mask):
     source = np.array(image.convert('RGB'))
     selected = np.array(mask.convert('L')) > 0
-    if mask.size != image.size:raise ValueError('Mascara e imagem devem ter o mesmo tamanho.')
-    if not selected.any():raise ValueError('Marque as letras e seu contorno antes de gerar a previa.')
-    if selected.all():raise ValueError('Deixe fundo limpo ao redor para servir de referencia.')
-    if not valid_model():raise RuntimeError('LaMa ausente ou incompleto. Feche o aplicativo e execute BAIXAR_LAMA.cmd na pasta dele.')
+    if mask.size != image.size:raise ValueError('Mask and image must have the same size.')
+    if not selected.any():raise ValueError('Mark the letters and their outline before generating a preview.')
+    if selected.all():raise ValueError('Leave clean background around the text as a reference.')
+    if not valid_model():raise RuntimeError('LaMa is missing or incomplete. Close the app and run BAIXAR_LAMA.cmd in its folder.')
     import torch
     torch.set_num_threads(max(1, min(4, torch.get_num_threads())))
     # Bound CPU memory use; merge only selected pixels at the original resolution.
@@ -55,7 +55,7 @@ def inpaint(image, mask):
             result = model(torch.from_numpy(rgb.transpose(2,0,1).copy()).float()[None]/255,
                            torch.from_numpy(m.copy()).float()[None,None])
             result = result[0,:,:h,:w].permute(1,2,0).cpu().numpy()
-        if not np.isfinite(result).all():raise RuntimeError('LaMa retornou uma imagem invalida.')
+        if not np.isfinite(result).all():raise RuntimeError('LaMa returned an invalid image.')
         repaired = Image.fromarray(np.clip(result*255,0,255).astype('uint8')).resize(image.size, Image.Resampling.LANCZOS)
         source[selected] = np.array(repaired)[selected]
         return Image.fromarray(source)
@@ -71,7 +71,7 @@ if __name__ == '__main__':
         mask = Image.new('L',sample.size);mask.paste(255,(24,24,40,40))
         result = inpaint(sample,mask)
         result.save(MODEL.parent/'teste-lama.png')
-        print('LaMa pronto. Teste real de reconstrucao concluido.',flush=True)
+        print('LaMa is ready. Actual reconstruction test completed.',flush=True)
     except Exception as error:
-        print('ERRO: '+str(error),flush=True)
+        print('ERROR: '+str(error),flush=True)
         raise SystemExit(1)

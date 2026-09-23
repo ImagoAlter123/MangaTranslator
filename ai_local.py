@@ -1,3 +1,4 @@
+from languages import language_code
 """Optional local OCR and translation. No manga images are uploaded."""
 from pathlib import Path
 import os
@@ -21,8 +22,8 @@ class LocalAI:
             import torch
             torch.set_num_threads(min(4,os.cpu_count() or 1))
         except ImportError as e:
-            raise RuntimeError('Instale a IA com INSTALAR_IA.cmd e tente novamente.') from e
-        code='ja' if language=='Japonês' else 'ch_sim'
+            raise RuntimeError('Install AI with INSTALAR_IA.cmd and try again.') from e
+        code=language_code(language)
         if code not in self.readers:
             self.readers[code]=easyocr.Reader([code,'en'],gpu=False,verbose=False,
                 model_storage_directory=str(ROOT/'ocr'),
@@ -55,7 +56,7 @@ class LocalAI:
         if not best[3] or best[2]<.12:
             for candidate in candidates:
                 if candidate[0] and re.fullmatch(r'[♥♡…\s]+',candidate[0]):return candidate[0]
-            raise ValueError('O OCR não conseguiu uma leitura confiável desta seleção. Ajuste a área para incluir só o texto, confira o idioma e a opção vertical. O original anterior foi mantido.')
+            raise ValueError('OCR could not reliably read this selection. Adjust the area to include only text and check the language and vertical option. The previous source text was kept.')
         return best[0]
 
     def translate(self,text,language,context='',glossary=''):

@@ -3,11 +3,11 @@ cd /d "%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar_vm.ps1"
 if errorlevel 1 (
   echo.
-  echo A instalacao nao terminou. Veja logs\instalacao.txt.
-  echo Execute este arquivo novamente para continuar.
+  echo Installation did not finish. See logs\instalacao.txt.
+  echo Run this file again to continue.
   pause
   exit /b 1
 )
 echo.
-echo Instalacao concluida. Abra ABRIR.cmd.
+echo Installation complete. Open ABRIR.cmd.
 pause

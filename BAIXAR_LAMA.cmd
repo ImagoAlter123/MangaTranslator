@@ -1,15 +1,15 @@
 @echo off
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
- echo Execute INSTALAR_TUDO.cmd primeiro.
+ echo Run INSTALAR_TUDO.cmd first.
  pause
  exit /b 1
 )
 ".venv\Scripts\python.exe" lama_local.py
 if errorlevel 1 (
- echo A instalacao do LaMa falhou. Confira a mensagem acima.
+ echo LaMa installation failed. Check the message above.
  pause
  exit /b 1
 )
-echo Pronto. Abra o aplicativo e escolha Reconstruir com IA - LaMa.
+echo Ready. Open the app and select Reconstruct with AI - LaMa.
 pause

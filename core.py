@@ -63,7 +63,7 @@ def load_multiple(paths):
     for path in sorted(paths,key=order):
         try:result.extend(load_pages(path))
         except Exception as error:
-            raise ValueError(f'Não foi possível abrir {Path(path).name}: {error}. A importação foi cancelada; o projeto anterior foi mantido.') from error
+            raise ValueError(f'Could not open {Path(path).name}: {error}. Import canceled; the previous project was kept.') from error
     return result
 
 
@@ -128,6 +128,13 @@ def measurable(text):
 
 
 def draw_dialogue(draw,xy,text,font,stroke=0,color="black"):
+    # Restore all glyph faces after drawing the halos, so thick outlines on
+    # later lines or vector symbols cannot cover previously drawn letters.
+    if stroke:_draw_dialogue_pass(draw,xy,text,font,stroke,color)
+    _draw_dialogue_pass(draw,xy,text,font,0,color)
+
+
+def _draw_dialogue_pass(draw,xy,text,font,stroke=0,color="black"):
     edge="black" if color=="white" else "white"
     lines=text.split('\n');widths=[draw.textlength(measurable(line),font=font) for line in lines]
     line_step=draw.textbbox((0,0),'A',font=font)[3]+2
@@ -226,10 +233,10 @@ def render_page(page, font_path='', strict=False):
         if not r.enabled:
             continue
         if not r.translation.strip():
-            warnings.append(f'Balão {idx+1}: tradução vazia; original preservado.'); continue
+            warnings.append(f'Balloon {idx+1}: empty translation; original preserved.'); continue
         text,font,bounds,fits=region_layout(r,font_path)
         if not fits:
-            warnings.append(f'Balão {idx+1}: texto não cabe; aumente a área ou diminua a fonte.')
+            warnings.append(f'Balloon {idx+1}: text does not fit; enlarge the area or reduce the font size.')
             if strict:
                 continue
         if not r.transparent:draw.rectangle(r.erase,fill='white')
@@ -239,11 +246,11 @@ def render_page(page, font_path='', strict=False):
     return image,warnings
 
 
-def save_project(path,pages,font_path):
+def save_project(path,pages,font_path,settings=None):
     temp=Path(str(path)+'.tmp')
     try:
         with zipfile.ZipFile(temp,'w',zipfile.ZIP_DEFLATED) as z:
-            meta={'version':2,'font':font_path,'pages':[]}
+            meta={'version':3,'font':font_path,'settings':settings or {},'pages':[]}
             for i,p in enumerate(pages):
                 buf=io.BytesIO(); p.image.save(buf,format='PNG')
                 z.writestr(f'{i}.png',buf.getvalue())
@@ -258,13 +265,14 @@ def save_project(path,pages,font_path):
         if temp.exists(): temp.unlink()
 
 
-def load_project(path):
+def load_project(path,with_settings=False):
     with zipfile.ZipFile(path) as z:
         meta=json.loads(z.read('project.json'))
-        if meta['version'] not in (1,2): raise ValueError('Versão de projeto não suportada.')
+        if meta['version'] not in (1,2,3): raise ValueError('Unsupported project version.')
         pages=[]
         for i,p in enumerate(meta['pages']):
             image=Image.open(io.BytesIO(z.read(f'{i}.png'))).convert('RGB')
             patches=[BackgroundPatch(item['box'],Image.open(io.BytesIO(z.read(item['file']))).convert('RGB')) for item in p.get('patches',[])]
             pages.append(Page(image,[Region(**r) for r in p['regions']],p['dpi'],patches))
-        return pages,meta.get('font','')
+        result=(pages,meta.get('font',''))
+        return result+(meta.get('settings',{}),) if with_settings else result

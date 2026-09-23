@@ -10,22 +10,22 @@ from PySide6.QtWidgets import (QDialog,QHBoxLayout,QVBoxLayout,QLabel,QPushButto
 
 def restore(image,mask,method,color=(255,255,255),anchor=None,radius=3):
     source=np.array(image.convert('RGB'));m=np.array(mask.convert('L'))>0
-    if not m.any():raise ValueError('Marque as letras em vermelho antes de gerar a prévia.')
+    if not m.any():raise ValueError('Mark the letters in red before generating a preview.')
     if method==3:
         from lama_local import inpaint
         return inpaint(image,mask)
     result=source.copy()
     if method==0:
-        if m.all():raise ValueError('Deixe um pouco do fundo sem máscara para servir de referência.')
+        if m.all():raise ValueError('Leave some background unmasked as a reference.')
         repaired=cv2.inpaint(source,m.astype('uint8')*255,radius,cv2.INPAINT_TELEA)
         result[m]=repaired[m]
     elif method==1:result[m]=color
     else:
-        if anchor is None:raise ValueError('Use “Origem da textura” e clique no início de uma área limpa.')
+        if anchor is None:raise ValueError('Select “Texture source” and click the start of a clean area.')
         yy,xx=np.where(m);sx=xx-xx.min()+anchor[0];sy=yy-yy.min()+anchor[1]
         if sx.min()<0 or sy.min()<0 or sx.max()>=image.width or sy.max()>=image.height:
-            raise ValueError('A textura de origem não cabe no recorte. Escolha outro ponto ou selecione uma área maior na página.')
-        if m[sy,sx].any():raise ValueError('A origem da textura cruza a máscara. Escolha uma área limpa fora das letras marcadas.')
+            raise ValueError('The source texture does not fit in this crop. Choose another point or select a larger area on the page.')
+        if m[sy,sx].any():raise ValueError('The texture source overlaps the mask. Choose a clean area outside the marked letters.')
         result[yy,xx]=source[sy,sx]
     return Image.fromarray(result)
 
@@ -62,35 +62,35 @@ class MaskView(QGraphicsView):
 
 class BackgroundEditor(QDialog):
     def __init__(self,image,parent=None):
-        super().__init__(parent);self.setWindowTitle('Fundo — experimental');self.resize(1080,760)
+        super().__init__(parent);self.setWindowTitle('Background — experimental');self.resize(1080,760)
         self.image=image.convert('RGB').copy();self.mask=Image.new('L',image.size,0);self.result=None
         self.color=(255,255,255);self.anchor=None;self.previous=None;self.history=[];self.worker=None
         row=QHBoxLayout(self);self.view=MaskView();row.addWidget(self.view,1)
         panel_widget=QWidget();panel=QVBoxLayout(panel_widget);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(panel_widget);scroll.setFixedWidth(350);row.addWidget(scroll)
-        intro=QLabel('1. Marque somente as letras.\n2. Escolha o tratamento.\n3. Gere a prévia e aplique.\n\nVermelho = pixels que serão alterados.');intro.setWordWrap(True);panel.addWidget(intro)
-        self.tool=QComboBox();self.tool.addItems(['Pincel da máscara','Borracha da máscara','Capturar cor','Origem da textura']);panel.addWidget(self.tool)
-        panel.addWidget(QLabel('Diâmetro do pincel (pixels)'));self.brush=QSpinBox();self.brush.setRange(1,150);self.brush.setValue(12);panel.addWidget(self.brush)
-        panel.addWidget(QLabel('Sugestão por contraste (revise a arte):'))
-        self.ink=QComboBox();self.ink.addItems(['Pixels escuros','Pixels claros']);panel.addWidget(self.ink)
+        intro=QLabel('1. Mark the letters and their outlines.\n2. Choose a treatment.\n3. Generate a preview and apply.\n\nRed = pixels that will change.');intro.setWordWrap(True);panel.addWidget(intro)
+        self.tool=QComboBox();self.tool.addItems(['Mask brush','Mask eraser','Pick color','Texture source']);panel.addWidget(self.tool)
+        panel.addWidget(QLabel('Brush diameter (pixels)'));self.brush=QSpinBox();self.brush.setRange(1,150);self.brush.setValue(12);panel.addWidget(self.brush)
+        panel.addWidget(QLabel('Contrast-based suggestion (check artwork):'))
+        self.ink=QComboBox();self.ink.addItems(['Dark pixels','Light pixels']);panel.addWidget(self.ink)
         self.threshold=QSpinBox();self.threshold.setRange(0,255);self.threshold.setValue(100);panel.addWidget(self.threshold)
-        self.button(panel,'Sugerir máscara',self.suggest)
-        self.button(panel,'Engrossar máscara 1 pixel',self.grow)
-        self.button(panel,'Limpar máscara',self.clear)
-        self.button(panel,'Desfazer máscara (Ctrl+Z)',self.undo)
+        self.button(panel,'Suggest mask',self.suggest)
+        self.button(panel,'Expand mask by 1 pixel',self.grow)
+        self.button(panel,'Clear mask',self.clear)
+        self.button(panel,'Undo mask (Ctrl+Z)',self.undo)
         self.undo_shortcut=QShortcut(QKeySequence('Ctrl+Z'),self)
         self.undo_shortcut.setContext(Qt.WindowShortcut)
         self.undo_shortcut.activated.connect(self.undo)
-        panel.addWidget(QLabel('Tratamento do fundo:'))
-        self.method=QComboBox();self.method.addItems(['Reconstruir pela vizinhança','Preencher com cor','Copiar textura próxima','Reconstruir com IA — LaMa (CPU)']);self.method.currentIndexChanged.connect(self.invalidate);panel.addWidget(self.method)
-        panel.addWidget(QLabel('Raio da reconstrução (pixels)'));self.radius=QSpinBox();self.radius.setRange(1,15);self.radius.setValue(3);self.radius.valueChanged.connect(self.invalidate);panel.addWidget(self.radius)
-        self.sample_label=QLabel('Cor: branco • origem: não definida');self.sample_label.setWordWrap(True);panel.addWidget(self.sample_label)
-        self.preview_button=self.button(panel,'Gerar prévia',self.preview)
-        self.status=QLabel('LaMa: execute BAIXAR_LAMA.cmd uma vez para instalar.');self.status.setWordWrap(True);panel.addWidget(self.status)
-        self.show_result=QCheckBox('Ver resultado (desmarque para comparar)');self.show_result.toggled.connect(self.draw);panel.addWidget(self.show_result)
-        self.show_mask=QCheckBox('Mostrar máscara vermelha');self.show_mask.setChecked(True);self.show_mask.toggled.connect(self.draw);panel.addWidget(self.show_mask)
-        self.apply_button=self.button(panel,'Aplicar fundo',self.accept);self.apply_button.setEnabled(False)
-        self.button(panel,'Cancelar',self.reject)
-        note=QLabel('Experimental. LaMa pode levar minutos na CPU.\nTodos os métodos podem alterar\nretículas e linhas. Revise antes de aplicar.\nCtrl + roda: zoom. Barras: navegar.');note.setWordWrap(True);panel.addWidget(note);panel.addStretch()
+        panel.addWidget(QLabel('Background treatment:'))
+        self.method=QComboBox();self.method.addItems(['Reconstruct from nearby pixels','Fill with color','Copy nearby texture','Reconstruct with AI — LaMa (CPU)']);self.method.currentIndexChanged.connect(self.invalidate);panel.addWidget(self.method)
+        panel.addWidget(QLabel('Reconstruction radius (pixels)'));self.radius=QSpinBox();self.radius.setRange(1,15);self.radius.setValue(3);self.radius.valueChanged.connect(self.invalidate);panel.addWidget(self.radius)
+        self.sample_label=QLabel('Color: white • source: not set');self.sample_label.setWordWrap(True);panel.addWidget(self.sample_label)
+        self.preview_button=self.button(panel,'Generate preview',self.preview)
+        self.status=QLabel('LaMa: run BAIXAR_LAMA.cmd once to install.');self.status.setWordWrap(True);panel.addWidget(self.status)
+        self.show_result=QCheckBox('Show result (uncheck to compare)');self.show_result.toggled.connect(self.draw);panel.addWidget(self.show_result)
+        self.show_mask=QCheckBox('Show red mask');self.show_mask.setChecked(True);self.show_mask.toggled.connect(self.draw);panel.addWidget(self.show_mask)
+        self.apply_button=self.button(panel,'Apply background',self.accept);self.apply_button.setEnabled(False)
+        self.button(panel,'Cancel',self.reject)
+        note=QLabel('Experimental. LaMa may take minutes on CPU.\nAll methods may alter tones and lines.\nReview before applying.\nCtrl + wheel: zoom. Scrollbars: pan.');note.setWordWrap(True);panel.addWidget(note);panel.addStretch()
         self.view.point.connect(self.paint);self.draw()
     def showEvent(self,event):
         super().showEvent(event);self.view.fitInView(self.view.sceneRect(),Qt.KeepAspectRatio)
@@ -107,7 +107,7 @@ class BackgroundEditor(QDialog):
             if not first:return
             if mode==2:self.color=self.image.getpixel((x,y))
             else:self.anchor=(x,y)
-            self.sample_label.setText(f'Cor: {self.color}\nOrigem: {self.anchor or "não definida"}');self.invalidate();return
+            self.sample_label.setText(f'Color: {self.color}\nSource: {self.anchor or "not set"}');self.invalidate();return
         if first:self.checkpoint();self.previous=None
         self.show_mask.setChecked(True)
         d=ImageDraw.Draw(self.mask);size=self.brush.value();r=size/2;value=255 if mode==0 else 0
@@ -125,7 +125,7 @@ class BackgroundEditor(QDialog):
         if self.worker is not None:return
         if self.method.currentIndex()==3:
             self.invalidate()
-            self.status.setText('LaMa está reconstruindo na CPU. Aguarde; em VM pode levar minutos.')
+            self.status.setText('LaMa is reconstructing on CPU. Please wait; this may take minutes in a VM.')
             self.setEnabled(False)
             self.worker=LamaWorker(self.image,self.mask,self)
             self.worker.completed.connect(self.lama_done)
@@ -133,13 +133,13 @@ class BackgroundEditor(QDialog):
             self.worker.finished.connect(self.lama_finished)
             self.worker.start();return
         try:self.result=restore(self.image,self.mask,self.method.currentIndex(),self.color,self.anchor,self.radius.value())
-        except Exception as error:QMessageBox.warning(self,'Revise a seleção',str(error));return
+        except Exception as error:QMessageBox.warning(self,'Review the selection',str(error));return
         self.show_mask.setChecked(False);self.show_result.setChecked(True);self.apply_button.setEnabled(True);self.draw()
     def lama_done(self,result):
         self.result=result;self.show_mask.setChecked(False);self.show_result.setChecked(True)
-        self.apply_button.setEnabled(True);self.status.setText('Prévia LaMa pronta. Compare antes de aplicar.');self.draw()
+        self.apply_button.setEnabled(True);self.status.setText('LaMa preview ready. Compare before applying.');self.draw()
     def lama_failed(self,message):
-        self.status.setText('Não foi possível gerar a prévia LaMa.')
+        self.status.setText('Unable to generate the LaMa preview.')
         QMessageBox.warning(self,'LaMa',message)
     def lama_finished(self):
         self.worker.deleteLater();self.worker=None;self.setEnabled(True)

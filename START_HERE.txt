@@ -1,0 +1,8 @@
+MangaTranslator - English interface
+
+NEW INSTALL: extract the ZIP, run INSTALAR_TUDO.cmd, then ABRIR.cmd.
+UPDATE: close the app and replace the program files. Keep .venv, models,
+runtime and your saved projects. Existing models do not need downloading again.
+
+The installer filenames are unchanged for compatibility. Their messages are
+now in English. See README.md for instructions and requirements.

@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 if not exist .venv\Scripts\pythonw.exe (
-  echo Execute INSTALAR_TUDO.cmd primeiro.
+  echo Run INSTALAR_TUDO.cmd first.
   pause
   exit /b 1
 )

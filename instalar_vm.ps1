@@ -7,11 +7,11 @@ $downloadDir = Join-Path $appRoot 'downloads'
 New-Item -ItemType Directory -Force -Path $logDir, $downloadDir | Out-Null
 Start-Transcript -Path (Join-Path $logDir 'instalacao.txt') -Append | Out-Null
 try {
-    if (-not [Environment]::Is64BitOperatingSystem) { throw 'Requer Windows de 64 bits.' }
-    Write-Host 'Manga Translator: instalacao local para Windows / maquina virtual.'
-    Write-Host 'Modelo Hy-MT2-7B Q8: aproximadamente 8 GB de download.'
-    Write-Host 'Reserve 15 GB de disco livre. Sugestao: 16 GB ou mais de RAM na VM.'
-    Write-Host 'Sem GPU obrigatoria; a traducao pode ser lenta pelo processador.'
+    if (-not [Environment]::Is64BitOperatingSystem) { throw 'Requires 64-bit Windows.' }
+    Write-Host 'Manga Translator: local installation for Windows / virtual machines.'
+    Write-Host 'Hy-MT2-7B Q8 model: approximately 8 GB download.'
+    Write-Host 'Reserve 15 GB of free disk space. Recommended: 16 GB or more RAM in the VM.'
+    Write-Host 'No GPU required; CPU translation may be slow.'
     $basePython = Join-Path $appRoot 'runtime\python\python.exe'
     if (-not (Test-Path -LiteralPath $basePython)) {
         $existingPython = $null
@@ -23,37 +23,37 @@ try {
             $basePython = $existingPython
         } else {
             $installer = Join-Path $downloadDir 'python-3.12.10-amd64.exe'
-            Write-Host 'Baixando Python do site oficial...'
+            Write-Host 'Downloading Python from the official website...'
             Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' -OutFile $installer
             $signature = Get-AuthenticodeSignature -LiteralPath $installer
             if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Python Software Foundation') {
-                throw 'A assinatura do instalador Python nao foi validada. Nada foi executado.'
+                throw 'The Python installer signature could not be verified. Nothing was executed.'
             }
             $pythonDir = Join-Path $appRoot 'runtime\python'
             New-Item -ItemType Directory -Force -Path $pythonDir | Out-Null
             $installerArgs = '/quiet InstallAllUsers=0 Include_launcher=0 Include_test=0 Include_pip=1 PrependPath=0 Shortcuts=0 TargetDir="' + $pythonDir + '"'
             $process = Start-Process -FilePath $installer -ArgumentList $installerArgs -WindowStyle Hidden -Wait -PassThru
-            if ($process.ExitCode -notin 0,3010) { throw "Instalacao do Python falhou: $($process.ExitCode)" }
+            if ($process.ExitCode -notin 0,3010) { throw "Python installation failed: $($process.ExitCode)" }
         }
     }
     $venvPython = Join-Path $appRoot '.venv\Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $venvPython)) {
         & $basePython -m venv (Join-Path $appRoot '.venv')
-        if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel criar o ambiente Python.' }
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create the Python environment.' }
     }
     & $venvPython (Join-Path $appRoot 'reparar_pip.py')
-    if ($LASTEXITCODE -ne 0) { throw 'O pip esta ausente ou danificado e o reparo automatico falhou. Veja a mensagem acima.' }
+    if ($LASTEXITCODE -ne 0) { throw 'pip is missing or damaged and automatic repair failed. Check the message above.' }
     & $venvPython -m pip install --upgrade pip
-    if ($LASTEXITCODE -ne 0) { throw 'Falha ao atualizar pip.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to update pip.' }
     & $venvPython -m pip install torch==2.14.0 torchvision==0.29.0 --index-url https://download.pytorch.org/whl/cpu
-    if ($LASTEXITCODE -ne 0) { throw 'Falha ao baixar o mecanismo de reconhecimento CPU.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to download the CPU recognition runtime.' }
     & $venvPython -m pip install -r (Join-Path $appRoot 'requirements-ai.txt')
-    if ($LASTEXITCODE -ne 0) { throw 'Falha ao instalar as bibliotecas.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to install libraries.' }
     & $venvPython (Join-Path $appRoot 'baixar_modelos.py')
-    if ($LASTEXITCODE -ne 0) { throw 'Falha ao baixar ou validar os modelos. Execute novamente para retomar.' }
-    Write-Host 'Tudo pronto. Use ABRIR.cmd. A fonte CC Wild Words Roman ja vem selecionada.'
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to download or verify models. Run again to resume.' }
+    Write-Host 'Ready. Use ABRIR.cmd. CC Wild Words Roman is already selected.'
 } catch {
-    Write-Host ('ERRO: ' + $_.Exception.Message) -ForegroundColor Red
+    Write-Host ('ERROR: ' + $_.Exception.Message) -ForegroundColor Red
     Stop-Transcript | Out-Null
     exit 1
 }

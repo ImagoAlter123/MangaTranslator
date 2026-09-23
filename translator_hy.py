@@ -1,3 +1,4 @@
+from languages import language_code
 """Hy-MT2 via an owned, loopback-only llama.cpp process. No remote inference."""
 from pathlib import Path
 import atexit,json,os,re,secrets,socket,subprocess,time,urllib.request,urllib.error
@@ -7,7 +8,7 @@ MODEL=ROOT/'models'/'hy-mt2'/'HY-MT2-7B-Q8_0.gguf'
 
 
 def build_prompt(text,language,context='',glossary=''):
-    source='Japanese' if language=='Japonês' else 'Chinese'
+    source='Japanese' if language_code(language)=='ja' else 'Chinese'
     return (f'Translate the SOURCE dialogue from {source} into natural English for a manga speech balloon. '
         'Preserve the meaning, emotion, names, honorifics when appropriate, and intentional ambiguity. '
         'Preserve explicit hearts (♥/♡) and ellipses (…). Ellipses mean a pause, NEVER a smiley. '
@@ -61,7 +62,7 @@ class HyTranslator:
         self.close()
         candidates=list((ROOT/'runtime'/'llama').rglob('llama-server.exe'))
         if not MODEL.exists() or not candidates:
-            raise RuntimeError('O tradutor Hy-MT2-7B ainda não foi instalado. Feche o aplicativo e execute INSTALAR_TUDO.cmd dentro da máquina virtual. O modelo tem aproximadamente 8 GB. O tradutor antigo não será usado como substituto.')
+            raise RuntimeError('Hy-MT2-7B is not installed yet. Close the app and run INSTALAR_TUDO.cmd inside the virtual machine. The model is approximately 8 GB. No fallback translator will be used.')
         with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
         self.base=f'http://127.0.0.1:{port}'
         logs=ROOT/'logs';logs.mkdir(exist_ok=True);self.log=open(logs/'tradutor.log','w',encoding='utf-8')
@@ -73,19 +74,19 @@ class HyTranslator:
                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             until=time.monotonic()+300
             while time.monotonic()<until:
-                if self.process.poll() is not None:raise RuntimeError('O tradutor não iniciou. Confira logs/tradutor.log; verifique a memória disponível na VM.')
+                if self.process.poll() is not None:raise RuntimeError('The translator did not start. Check logs/tradutor.log and the available VM memory.')
                 try:
                     if self.request('/health',timeout=2).get('status')=='ok':return
                 except (OSError,ValueError):pass
                 time.sleep(.5)
-            raise RuntimeError('O modelo demorou mais de 5 minutos para carregar. Verifique a memória da VM e logs/tradutor.log.')
+            raise RuntimeError('The model took more than 5 minutes to load. Check VM memory and logs/tradutor.log.')
         except Exception:self.close();raise
 
     def translate(self,text,language,context='',glossary=''):
         original=text
-        if not text.strip():raise ValueError('Revise o texto original antes de traduzir.')
+        if not text.strip():raise ValueError('Review the source text before translating.')
         if len(text)>2500 or len(context)>5000 or len(glossary)>1500:
-            raise ValueError('Texto/contexto muito longo. Divida a seleção ou reduza o glossário.')
+            raise ValueError('Text/context is too long. Split the selection or shorten the glossary.')
         self.start()
         try:
             result=self.request('/v1/chat/completions',{
@@ -93,12 +94,12 @@ class HyTranslator:
                 'temperature':0.3,'top_p':0.6,'top_k':20,'repeat_penalty':1.05,
                 'max_tokens':1024,'seed':42,'stream':False,'reasoning_format':'deepseek'},timeout=900)
         except (OSError,ValueError) as error:
-            self.close();raise RuntimeError('A tradução falhou ou excedeu o tempo limite. Consulte logs/tradutor.log.') from error
+            self.close();raise RuntimeError('Translation failed or timed out. Check logs/tradutor.log.') from error
         choice=result['choices'][0]
-        if choice.get('finish_reason')=='length':raise RuntimeError('A resposta foi interrompida pelo limite de tamanho. Divida o texto e tente novamente.')
+        if choice.get('finish_reason')=='length':raise RuntimeError('The response reached the length limit. Split the text and try again.')
         text=choice['message'].get('content') or ''
         text=re.sub(r'<think>.*?</think>','',text,flags=re.S).strip()
-        if not text or '<think>' in text:raise RuntimeError('O modelo não retornou uma tradução completa. Tente novamente.')
+        if not text or '<think>' in text:raise RuntimeError('The model did not return a complete translation. Try again.')
         return preserve_symbols(original,text)
 
     def close(self):

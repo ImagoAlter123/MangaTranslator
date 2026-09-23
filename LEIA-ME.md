@@ -117,3 +117,13 @@ COR E REVISÃO EM LOTE
 - Diminuir/Aumentar 2 px: ajusta todos os balões da página a partir do tamanho atual e desliga o ajuste automático deles.
 - As operações em lote afetam somente a página atual e podem ser desfeitas. O aviso de texto que não cabe continua ativo.
 - A cor fica salva no projeto. Projetos antigos usam preto por padrão.
+
+
+## Estilo preto com contorno branco
+
+Selecione um balão e clique em **Estilo: preto com contorno branco**. O botão escolhe preto, retira a caixa branca e define um contorno branco proporcional ao tamanho atual da fonte. Ajuste **Contorno contrastante (px)** de 0 a 32 para mudar a espessura. Marque **Aplicar tradução deste balão** para exibir. Ctrl+Z desfaz o estilo. O estilo não remove as letras originais: use a ferramenta de fundo antes, quando necessário.
+
+
+## Idioma e glossário salvos no projeto
+
+O projeto agora guarda idioma original, glossário, leitura vertical e ordem das colunas. Alterar essas opções marca o projeto como não salvo. Projetos antigos continuam abrindo, mas não contêm esses dados: selecione o idioma e preencha o glossário novamente, depois salve com esta versão. Projetos novos usam formato 3 e devem ser abertos nesta versão ou em versões posteriores.
