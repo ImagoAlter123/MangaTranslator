@@ -1,0 +1,10 @@
+/.venv/
+/models/
+/runtime/
+/downloads/
+/logs/
+__pycache__/
+*.pyc
+*.part
+*.tmp
+.env

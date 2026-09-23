@@ -1,0 +1,50 @@
+MANGA TRANSLATOR - PACOTE COMPLETO DO APLICATIVO
+
+1. Extraia toda a pasta MangaTranslator dentro da maquina virtual.
+2. Execute INSTALAR_TUDO.cmd e aguarde a conclusao.
+3. Execute ABRIR.cmd.
+
+O pacote inclui o aplicativo atualizado, a ferramenta de fundo experimental,
+os scripts de instalacao e download, as instrucoes e um projeto de exemplo.
+
+Python, bibliotecas e modelos de IA NAO estao embutidos no ZIP.
+INSTALAR_TUDO.cmd baixa e instala esses componentes. E necessario ter internet
+na primeira instalacao. O modelo de traducao tem aproximadamente 8 GB.
+Reserve 15 GB de disco; recomenda-se 16 GB ou mais de RAM na VM.
+A fonte CC Wild Words Roman enviada ja esta incluida na pasta fonts e
+e selecionada automaticamente. Copie a pasta fonts ao atualizar.
+
+Se ja tem uma instalacao, feche o programa antes de copiar os arquivos novos
+para a mesma pasta. Preserve .venv, models, runtime e seus projetos.
+Se tudo ja foi instalado, abra ABRIR.cmd. Se faltar algum componente, execute
+INSTALAR_TUDO.cmd; ele reaproveita os arquivos validados.
+
+Para traduzir: escolha o idioma original correto e use Ler e traduzir todos
+os baloes. Revise antes de aplicar. Todos os botoes de traducao usam Hy-MT2.
+Retraduzir serve para substituir traducoes ja preenchidas, nao e uma etapa
+obrigatoria. Corrija erros no original reconhecido antes de retraduzir.
+
+Instrucoes detalhadas: LEIA-ME.md e FUNDO-EXPERIMENTAL.md.
+
+Se aparecer No module named pip, o instalador atualizado repara isso
+automaticamente. Voce tambem pode executar REPARAR_INSTALACAO.cmd.
+O reparo usa o pacote local do Python e nao apaga projetos ou modelos.
+
+MULTIPLAS IMAGENS: clique em Abrir PDF / varias imagens e use Ctrl+A
+para selecionar as 30 imagens WebP. Elas entram em ordem numerica como
+paginas de um projeto. Exportar PDF reune todas as paginas.
+
+
+NOVO: LaMa para reconstruir fundos com IA local na CPU.
+Ao atualizar, execute BAIXAR_LAMA.cmd uma vez e depois ABRIR.cmd.
+No editor de fundo, escolha Reconstruir com IA — LaMa (CPU).
+O modelo (aproximadamente 205 MB) não está incluído no ZIP. Consulte FUNDO-EXPERIMENTAL.md.
+
+
+COR E REVISÃO EM LOTE
+- Cor da fonte deste balão: Preto ou Branco. O contorno usa a cor oposta.
+- Para texto branco sobre o desenho, marque Texto sobre arte (sem caixa branca).
+- Aplicar todos os textos desta página: aplica as traduções preenchidas; ignora campos vazios. Não executa nova tradução.
+- Diminuir/Aumentar 2 px: ajusta todos os balões da página a partir do tamanho atual e desliga o ajuste automático deles.
+- As operações em lote afetam somente a página atual e podem ser desfeitas. O aviso de texto que não cabe continua ativo.
+- A cor fica salva no projeto. Projetos antigos usam preto por padrão.
