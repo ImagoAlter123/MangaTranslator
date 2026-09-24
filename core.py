@@ -25,6 +25,10 @@ class Region:
     outline: int = 0
     text_color: str = "black"
     outline_color: str = "white"
+    text_shape: str = "rectangle"
+    erase_shape: str = "rectangle"
+    corner_rounding: int = 50
+    text_angle: int = 0
 
     def __post_init__(self):
         self.translation=normalize_translation(self.translation)
@@ -229,7 +233,49 @@ def background_image(page):
 
 def region_layout(region,font_path):
     b=region.text_box;s=region.outline
+    if region.text_shape=='rounded':
+        return oval_layout(region.translation,b,font_path,region.size,s,region.corner_rounding)
+    if region.text_shape=='oval':
+        return oval_layout(region.translation,b,font_path,region.size,s)
     return layout(region.translation,[b[0]+s,b[1]+s,b[2]-s,b[3]-s],font_path,region.size,region.auto_fit)
+
+
+def oval_layout(text,box,font_path,size,stroke=0,rounding=None):
+    """Wrap into centered elliptical rows without shrinking the user's font."""
+    font=font_at(font_path,size);draw=ImageDraw.Draw(Image.new('RGB',(1,1)))
+    width=max(1,box[2]-box[0]-2*stroke-8);height=max(1,box[3]-box[1]-2*stroke-8)
+    step=draw.textbbox((0,0),'A',font=font)[3]+2
+    words=normalize_translation(text).split()
+    # Explicit line breaks remain authoritative. Bound work on long pasted text.
+    if '\n' in normalize_translation(text) or len(words)>100 or not words:
+        return layout(text,box,font_path,size,False)
+    for count in range(1,min(len(words),max(1,int(height/step)))+1):
+        widths=[width*math.sqrt(max(0,1-((2*i-count+1)*step/height)**2)) for i in range(count)]
+        if rounding is not None:
+            radius=min(width,height)*max(0,min(100,rounding))/200
+            widths=[]
+            for i in range(count):
+                y=abs((2*i-count+1)*step/2)+step/2
+                delta=max(0,y-(height/2-radius))
+                widths.append(width-2*(radius-math.sqrt(max(0,radius*radius-delta*delta))))
+        @lru_cache(None)
+        def solve(start,row):
+            if row==count:return (0,[]) if start==len(words) else None
+            best=None
+            for end in range(start+1,len(words)+1):
+                line=' '.join(words[start:end]);length=draw.textlength(measurable(line),font=font)
+                if length>widths[row]:break
+                tail=solve(end,row+1)
+                if tail is not None:
+                    candidate=((widths[row]-length)**2+tail[0],[line]+tail[1])
+                    if best is None or candidate[0]<best[0]:best=candidate
+            return best
+        result=solve(0,0)
+        if result:
+            joined='\n'.join(result[1]);bounds=draw.multiline_textbbox((0,0),measurable(joined),font=font,spacing=2,align='center')
+            return joined,font,bounds,True
+    # Overflow is permitted, exactly as in rectangular mode.
+    return layout(text,box,font_path,size,False)
 
 
 def render_page(page, font_path='', strict=False):
@@ -242,10 +288,30 @@ def render_page(page, font_path='', strict=False):
         text,font,bounds,fits=region_layout(r,font_path)
         # The selection controls positioning, not clipping or export validity.
         # Oversized text is intentionally rendered at the requested size.
-        if not r.transparent:draw.rectangle(r.erase,fill='white')
+        if not r.transparent:
+            if r.text_angle:
+                ew=max(1,r.erase[2]-r.erase[0]);eh=max(1,r.erase[3]-r.erase[1])
+                cover=Image.new('RGBA',(ew+4,eh+4),(0,0,0,0));cover_draw=ImageDraw.Draw(cover);cover_box=[2,2,ew+1,eh+1]
+                if r.erase_shape=='oval':cover_draw.ellipse(cover_box,fill='white')
+                elif r.erase_shape=='rounded':cover_draw.rounded_rectangle(cover_box,radius=min(ew,eh)*max(0,min(100,r.corner_rounding))/200,fill='white')
+                else:cover_draw.rectangle(cover_box,fill='white')
+                cover=cover.rotate(-r.text_angle,resample=Image.Resampling.BICUBIC,expand=True)
+                ex=(r.erase[0]+r.erase[2])/2;ey=(r.erase[1]+r.erase[3])/2
+                image.paste(cover,(round(ex-cover.width/2),round(ey-cover.height/2)),cover)
+            elif r.erase_shape=='oval':draw.ellipse(r.erase,fill='white')
+            elif r.erase_shape=='rounded':draw.rounded_rectangle(r.erase,radius=min(r.erase[2]-r.erase[0],r.erase[3]-r.erase[1])*max(0,min(100,r.corner_rounding))/200,fill='white')
+            else:draw.rectangle(r.erase,fill='white')
         x=(r.text_box[0]+r.text_box[2]-(bounds[2]-bounds[0]))/2-bounds[0]
         y=(r.text_box[1]+r.text_box[3]-(bounds[3]-bounds[1]))/2-bounds[1]
-        draw_dialogue(draw,(x,y),text,font,r.outline,r.text_color,r.outline_color)
+        if r.text_angle:
+            # Render a padded transparent tile so glyphs outside the box survive rotation.
+            pad=r.outline+4;tw=max(1,math.ceil(bounds[2]-bounds[0])+2*pad);th=max(1,math.ceil(bounds[3]-bounds[1])+2*pad)
+            tile=Image.new('RGBA',(tw,th),(0,0,0,0))
+            draw_dialogue(ImageDraw.Draw(tile),(pad-bounds[0],pad-bounds[1]),text,font,r.outline,r.text_color,r.outline_color)
+            tile=tile.rotate(-r.text_angle,resample=Image.Resampling.BICUBIC,expand=True)
+            cx=(r.text_box[0]+r.text_box[2])/2;cy=(r.text_box[1]+r.text_box[3])/2
+            image.paste(tile,(round(cx-tile.width/2),round(cy-tile.height/2)),tile)
+        else:draw_dialogue(draw,(x,y),text,font,r.outline,r.text_color,r.outline_color)
     return image,warnings
 
 
@@ -277,7 +343,7 @@ def save_project(path,pages,font_path,settings=None):
     temp=Path(str(path)+'.tmp')
     try:
         with zipfile.ZipFile(temp,'w',zipfile.ZIP_DEFLATED) as z:
-            meta={'version':4,'font':font_path,'settings':settings or {},'pages':[]}
+            meta={'version':5,'font':font_path,'settings':settings or {},'pages':[]}
             for i,p in enumerate(pages):
                 buf=io.BytesIO(); p.image.save(buf,format='PNG')
                 z.writestr(f'{i}.png',buf.getvalue())
@@ -296,7 +362,7 @@ def save_project(path,pages,font_path,settings=None):
 def load_project(path,with_settings=False):
     with zipfile.ZipFile(path) as z:
         meta=json.loads(z.read('project.json'))
-        if meta['version'] not in (1,2,3,4): raise ValueError('Unsupported project version.')
+        if meta['version'] not in (1,2,3,4,5): raise ValueError('Unsupported project version.')
         pages=[]
         for i,p in enumerate(meta['pages']):
             image=Image.open(io.BytesIO(z.read(f'{i}.png'))).convert('RGB')

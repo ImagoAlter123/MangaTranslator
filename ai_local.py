@@ -15,7 +15,7 @@ class LocalAI:
         from translator_hy import HyTranslator
         self.translator=HyTranslator()
 
-    def read(self,image,language,vertical=False,right_to_left=True):
+    def read(self,image,language,vertical=False,right_to_left=True,deskew=False):
         try:
             import easyocr
             import numpy as np
@@ -52,6 +52,24 @@ class LocalAI:
         candidates=[recognize(image)]
         clean=outline_view(image)
         if clean is not None:candidates.append(recognize(clean,.25))
+        if deskew:
+            # Rotate OCR-only views, never the artwork. Compare both directions:
+            # stylized sound effects do not have a reliable geometric baseline.
+            from PIL import Image
+            base=clean if clean is not None else image.convert('RGB')
+            for angle in (-40,-30,-20,-12,12,20,30,40):
+                view=base.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor='white')
+                candidates.append(recognize(view,.25 if clean is not None else 0))
+            # Short Chinese effects often use glyphs shared by both scripts;
+            # the simplified recognizer can read stylized radicals better.
+            if code=='ch_tra' and max(candidates,key=lambda c:c[1])[3]<=2:
+                if 'ch_sim' not in self.readers:
+                    self.readers['ch_sim']=easyocr.Reader(['ch_sim','en'],gpu=False,verbose=False,
+                        model_storage_directory=str(ROOT/'ocr'),user_network_directory=str(ROOT/'ocr-user'))
+                reader=self.readers['ch_sim']
+                for angle in (-40,-30,-20,0,20,30,40):
+                    view=base.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor='white')
+                    candidates.append(recognize(view,.25 if clean is not None else 0))
         best=max(candidates,key=lambda candidate:candidate[1])
         if not best[3] or best[2]<.12:
             for candidate in candidates:

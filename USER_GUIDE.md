@@ -40,7 +40,7 @@ OCR, translation, balloon detection and reconstructed artwork require review. Fo
 
 PySide6, Pillow, OpenCV, pypdfium2, EasyOCR, Tencent Hy-MT2, llama.cpp and LaMa retain their own licenses. The LaMa TorchScript export is distributed by Sanster/IOPaint. Images are processed locally, not uploaded for inference.
 
-The font and example project were supplied by the user for this private repository. Their inclusion does not grant public redistribution rights.
+The font and example project were supplied by the user for this repository. Their inclusion does not grant public redistribution rights.
 
 ## Custom colors
 
@@ -61,3 +61,27 @@ See BACKGROUND_GUIDE.md for background editing instructions.
 ## Export all pages as WebP ZIP
 
 Click **Export all as WebP ZIP**, choose a ZIP filename and wait for completion. Every page is exported in project order as page-001.webp, page-002.webp, etc. Images use lossless WebP at the original page pixel dimensions, with applied translations and background edits. Unapplied translations remain unapplied. Oversized text does not block export. The archive is only replaced after every page has been exported successfully.
+
+
+## Traditional Chinese, diagonal text and oval balloons
+
+- Use **Chinese (Traditional)** for traditional characters (for example 說, 過 and 並). Existing Chinese projects retain **Chinese (Simplified)**. The traditional OCR model downloads on first use; INSTALL_ALL.cmd also downloads it.
+- For slanted lettering, enable **Read diagonal text (slower)** and select a tight area around the lettering. For a single sound effect, turn off **Vertical source text**. This mode compares rotated OCR views without rotating or changing the page. Stylized effects still need review.
+- **Erase shape → Oval** uses an elliptical white cover. Adjust the blue erase area so it covers the old text without covering the balloon border.
+- **Text shape → Oval** wraps centered lines to an elliptical area, keeping the chosen font size. Adjust the green translation area separately. Short translations do not grow automatically. Explicit line breaks remain under your control; remove them to let oval wrapping choose the lines.
+- Oval mode approximates rounded balloons; it does not trace irregular borders. If the text cannot fit, it still exports at the requested size.
+- Shape choices, the traditional language and the diagonal option are saved in projects. New projects use format 5; open them with this updated version.
+
+
+## v1.3.0 — OCR and balloon editing
+
+- Traditional Chinese OCR and optional diagonal recognition. Stylized sound effects still require review.
+- Rectangle, oval and rounded rectangle erase/text shapes; adjustable corner rounding and pixel dimensions.
+- Click a balloon on the page to select it. Move either area or both; resize from any of eight edge/corner handles.
+- Text + erase angle rotates both areas, saved with the project and used in exports.
+- Quick icon toolbar, keyboard shortcuts (F1), and Alt+P for black text with white outline.
+- Mouse wheel no longer changes dropdowns or numeric controls.
+- Batch OCR errors identify the page and balloon; failed batches leave the project unchanged.
+- Choosing Create balloon exits Move/Resize even when the creation mode was already selected.
+
+New projects use format 5 and require this version. Existing projects remain readable. When updating, keep .venv, models, runtime and saved projects. Run RUN.cmd; traditional OCR downloads its model on first use. Models are not bundled in the ZIP.

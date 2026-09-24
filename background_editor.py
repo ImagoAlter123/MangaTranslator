@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt,Signal,QThread,QSettings
 from PySide6.QtGui import QImage,QPixmap,QColor,QShortcut,QKeySequence
 from PySide6.QtWidgets import (QDialog,QHBoxLayout,QVBoxLayout,QLabel,QPushButton,QComboBox,
     QSpinBox,QCheckBox,QGraphicsView,QGraphicsScene,QMessageBox,QWidget,QScrollArea)
+from click_controls import QComboBox, QSpinBox
 
 
 def restore(image,mask,method,color=(255,255,255),anchor=None,radius=3):

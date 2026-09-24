@@ -40,7 +40,7 @@ OCR, translation, balloon detection and reconstructed artwork require review. Fo
 
 PySide6, Pillow, OpenCV, pypdfium2, EasyOCR, Tencent Hy-MT2, llama.cpp and LaMa retain their own licenses. The LaMa TorchScript export is distributed by Sanster/IOPaint. Images are processed locally, not uploaded for inference.
 
-The font and example project were supplied by the user for this private repository. Their inclusion does not grant public redistribution rights.
+The font and example project were supplied by the user for this repository. Their inclusion does not grant public redistribution rights.
 
 ## Custom colors
 
@@ -58,3 +58,17 @@ Use RUN.cmd to launch, INSTALL_ALL.cmd for a new installation, and DOWNLOAD_LAMA
 ## Export all pages as WebP ZIP
 
 Click **Export all as WebP ZIP**, choose a ZIP filename and wait for completion. Every page is exported in project order as page-001.webp, page-002.webp, etc. Images use lossless WebP at the original page pixel dimensions, with applied translations and background edits. Unapplied translations remain unapplied. Oversized text does not block export. The archive is only replaced after every page has been exported successfully.
+
+
+## v1.3.0 — OCR and balloon editing
+
+- Traditional Chinese OCR and optional diagonal recognition. Stylized sound effects still require review.
+- Rectangle, oval and rounded rectangle erase/text shapes; adjustable corner rounding and pixel dimensions.
+- Click a balloon on the page to select it. Move either area or both; resize from any of eight edge/corner handles.
+- Text + erase angle rotates both areas, saved with the project and used in exports.
+- Quick icon toolbar, keyboard shortcuts (F1), and Alt+P for black text with white outline.
+- Mouse wheel no longer changes dropdowns or numeric controls.
+- Batch OCR errors identify the page and balloon; failed batches leave the project unchanged.
+- Choosing Create balloon exits Move/Resize even when the creation mode was already selected.
+
+New projects use format 5 and require this version. Existing projects remain readable. When updating, keep .venv, models, runtime and saved projects. Run RUN.cmd; traditional OCR downloads its model on first use. Models are not bundled in the ZIP.

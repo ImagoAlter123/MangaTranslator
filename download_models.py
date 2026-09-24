@@ -91,7 +91,7 @@ def main():
     print('Downloading Japanese and Chinese OCR models...',flush=True)
     os.environ.setdefault('TORCH_HOME',str(ROOT/'models'/'torch'))
     import easyocr
-    for language in ['ja','ch_sim']:
+    for language in ['ja','ch_sim','ch_tra']:
         reader=easyocr.Reader([language,'en'],gpu=False,verbose=False,
             model_storage_directory=str(ROOT/'models'/'ocr'),user_network_directory=str(ROOT/'models'/'ocr-user'))
         del reader;gc.collect();print(f'OCR {language}: ready.',flush=True)
