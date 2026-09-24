@@ -2,7 +2,7 @@
 import numpy as np
 import cv2
 from PIL import Image,ImageDraw
-from PySide6.QtCore import Qt,Signal,QThread
+from PySide6.QtCore import Qt,Signal,QThread,QSettings
 from PySide6.QtGui import QImage,QPixmap,QColor,QShortcut,QKeySequence
 from PySide6.QtWidgets import (QDialog,QHBoxLayout,QVBoxLayout,QLabel,QPushButton,QComboBox,
     QSpinBox,QCheckBox,QGraphicsView,QGraphicsScene,QMessageBox,QWidget,QScrollArea)
@@ -61,15 +61,19 @@ class MaskView(QGraphicsView):
 
 
 class BackgroundEditor(QDialog):
-    def __init__(self,image,parent=None):
+    def __init__(self,image,parent=None,preferences=None):
         super().__init__(parent);self.setWindowTitle('Background — experimental');self.resize(1080,760)
+        self.preferences=preferences if preferences is not None else QSettings('MangaTranslator','MangaTranslator')
         self.image=image.convert('RGB').copy();self.mask=Image.new('L',image.size,0);self.result=None
         self.color=(255,255,255);self.anchor=None;self.previous=None;self.history=[];self.worker=None
         row=QHBoxLayout(self);self.view=MaskView();row.addWidget(self.view,1)
         panel_widget=QWidget();panel=QVBoxLayout(panel_widget);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(panel_widget);scroll.setFixedWidth(350);row.addWidget(scroll)
         intro=QLabel('1. Mark the letters and their outlines.\n2. Choose a treatment.\n3. Generate a preview and apply.\n\nRed = pixels that will change.');intro.setWordWrap(True);panel.addWidget(intro)
         self.tool=QComboBox();self.tool.addItems(['Mask brush','Mask eraser','Pick color','Texture source']);panel.addWidget(self.tool)
-        panel.addWidget(QLabel('Brush diameter (pixels)'));self.brush=QSpinBox();self.brush.setRange(1,150);self.brush.setValue(12);panel.addWidget(self.brush)
+        panel.addWidget(QLabel('Brush diameter (pixels)'));self.brush=QSpinBox();self.brush.setRange(1,150)
+        try:brush_size=int(self.preferences.value('background/brush_size',12))
+        except (TypeError,ValueError):brush_size=12
+        self.brush.setValue(brush_size);self.brush.valueChanged.connect(self.save_brush_size);panel.addWidget(self.brush)
         panel.addWidget(QLabel('Contrast-based suggestion (check artwork):'))
         self.ink=QComboBox();self.ink.addItems(['Dark pixels','Light pixels']);panel.addWidget(self.ink)
         self.threshold=QSpinBox();self.threshold.setRange(0,255);self.threshold.setValue(100);panel.addWidget(self.threshold)
@@ -81,17 +85,24 @@ class BackgroundEditor(QDialog):
         self.undo_shortcut.setContext(Qt.WindowShortcut)
         self.undo_shortcut.activated.connect(self.undo)
         panel.addWidget(QLabel('Background treatment:'))
-        self.method=QComboBox();self.method.addItems(['Reconstruct from nearby pixels','Fill with color','Copy nearby texture','Reconstruct with AI — LaMa (CPU)']);self.method.currentIndexChanged.connect(self.invalidate);panel.addWidget(self.method)
+        self.method=QComboBox()
+        for label,method in [('Reconstruct with AI — LaMa (CPU)',3),('Reconstruct from nearby pixels',0),('Fill with color',1),('Copy nearby texture',2)]:
+            self.method.addItem(label,method)
+        self.method.currentIndexChanged.connect(self.invalidate);panel.addWidget(self.method)
         panel.addWidget(QLabel('Reconstruction radius (pixels)'));self.radius=QSpinBox();self.radius.setRange(1,15);self.radius.setValue(3);self.radius.valueChanged.connect(self.invalidate);panel.addWidget(self.radius)
+        self.radius.setEnabled(False)
+        self.method.currentIndexChanged.connect(lambda _:self.radius.setEnabled(self.method.currentData()==0))
         self.sample_label=QLabel('Color: white • source: not set');self.sample_label.setWordWrap(True);panel.addWidget(self.sample_label)
         self.preview_button=self.button(panel,'Generate preview',self.preview)
-        self.status=QLabel('LaMa: run BAIXAR_LAMA.cmd once to install.');self.status.setWordWrap(True);panel.addWidget(self.status)
+        self.status=QLabel('LaMa: run DOWNLOAD_LAMA.cmd once to install.');self.status.setWordWrap(True);panel.addWidget(self.status)
         self.show_result=QCheckBox('Show result (uncheck to compare)');self.show_result.toggled.connect(self.draw);panel.addWidget(self.show_result)
         self.show_mask=QCheckBox('Show red mask');self.show_mask.setChecked(True);self.show_mask.toggled.connect(self.draw);panel.addWidget(self.show_mask)
         self.apply_button=self.button(panel,'Apply background',self.accept);self.apply_button.setEnabled(False)
         self.button(panel,'Cancel',self.reject)
         note=QLabel('Experimental. LaMa may take minutes on CPU.\nAll methods may alter tones and lines.\nReview before applying.\nCtrl + wheel: zoom. Scrollbars: pan.');note.setWordWrap(True);panel.addWidget(note);panel.addStretch()
         self.view.point.connect(self.paint);self.draw()
+    def save_brush_size(self,size):
+        self.preferences.setValue('background/brush_size',size);self.preferences.sync()
     def showEvent(self,event):
         super().showEvent(event);self.view.fitInView(self.view.sceneRect(),Qt.KeepAspectRatio)
     def button(self,panel,text,fn):
@@ -123,7 +134,7 @@ class BackgroundEditor(QDialog):
         if self.history:self.mask=self.history.pop();self.invalidate()
     def preview(self):
         if self.worker is not None:return
-        if self.method.currentIndex()==3:
+        if self.method.currentData()==3:
             self.invalidate()
             self.status.setText('LaMa is reconstructing on CPU. Please wait; this may take minutes in a VM.')
             self.setEnabled(False)
@@ -132,7 +143,7 @@ class BackgroundEditor(QDialog):
             self.worker.failed.connect(self.lama_failed)
             self.worker.finished.connect(self.lama_finished)
             self.worker.start();return
-        try:self.result=restore(self.image,self.mask,self.method.currentIndex(),self.color,self.anchor,self.radius.value())
+        try:self.result=restore(self.image,self.mask,self.method.currentData(),self.color,self.anchor,self.radius.value())
         except Exception as error:QMessageBox.warning(self,'Review the selection',str(error));return
         self.show_mask.setChecked(False);self.show_result.setChecked(True);self.apply_button.setEnabled(True);self.draw()
     def lama_done(self,result):

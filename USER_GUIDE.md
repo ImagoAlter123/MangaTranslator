@@ -55,6 +55,9 @@ LaMa is now the first and default background treatment. The radius control appli
 Use RUN.cmd to launch, INSTALL_ALL.cmd for a new installation, and DOWNLOAD_LAMA.cmd to install only LaMa. The mask brush size is remembered across background dialogs and app restarts on this computer. Apply all translations is now above font sizing, with the black/white style preset immediately below it. Load font is below the individual Apply translation checkbox. Text overflow does not block export or shrink the text; pixels outside the page itself remain outside the exported image.
 
 
+See BACKGROUND_GUIDE.md for background editing instructions.
+
+
 ## Export all pages as WebP ZIP
 
 Click **Export all as WebP ZIP**, choose a ZIP filename and wait for completion. Every page is exported in project order as page-001.webp, page-002.webp, etc. Images use lossless WebP at the original page pixel dimensions, with applied translations and background edits. Unapplied translations remain unapplied. Oversized text does not block export. The archive is only replaced after every page has been exported successfully.

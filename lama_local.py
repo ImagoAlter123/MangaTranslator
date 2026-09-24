@@ -16,7 +16,7 @@ def valid_model():
 
 
 def install():
-    from baixar_modelos import get_json, download
+    from download_models import get_json, download
     if valid_model():
         print('LaMa is already installed and verified.', flush=True)
         return
@@ -28,7 +28,7 @@ def install():
     download(URL, MODEL, asset['size'], digest[7:] if digest.startswith('sha256:') else None)
     if not valid_model():
         MODEL.unlink()
-        raise RuntimeError('LaMa model verification failed. Run BAIXAR_LAMA.cmd again.')
+        raise RuntimeError('LaMa model verification failed. Run DOWNLOAD_LAMA.cmd again.')
 
 
 def inpaint(image, mask):
@@ -37,7 +37,7 @@ def inpaint(image, mask):
     if mask.size != image.size:raise ValueError('Mask and image must have the same size.')
     if not selected.any():raise ValueError('Mark the letters and their outline before generating a preview.')
     if selected.all():raise ValueError('Leave clean background around the text as a reference.')
-    if not valid_model():raise RuntimeError('LaMa is missing or incomplete. Close the app and run BAIXAR_LAMA.cmd in its folder.')
+    if not valid_model():raise RuntimeError('LaMa is missing or incomplete. Close the app and run DOWNLOAD_LAMA.cmd in its folder.')
     import torch
     torch.set_num_threads(max(1, min(4, torch.get_num_threads())))
     # Bound CPU memory use; merge only selected pixels at the original resolution.

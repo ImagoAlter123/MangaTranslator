@@ -3,6 +3,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 import io, json, zipfile, re, math
 from functools import lru_cache
+from text_cleanup import normalize_translation
 import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
@@ -18,11 +19,15 @@ class Region:
     original: str = ''
     translation: str = ''
     size: int = 30
-    auto_fit: bool = True
+    auto_fit: bool = False
     enabled: bool = False
     transparent: bool = False
     outline: int = 0
     text_color: str = "black"
+    outline_color: str = "white"
+
+    def __post_init__(self):
+        self.translation=normalize_translation(self.translation)
 
 
 @dataclass
@@ -127,15 +132,15 @@ def measurable(text):
     return text.replace('♥','O').replace('♡','O').replace('—','M').replace('–','N')
 
 
-def draw_dialogue(draw,xy,text,font,stroke=0,color="black"):
+def draw_dialogue(draw,xy,text,font,stroke=0,color="black",outline_color=None):
     # Restore all glyph faces after drawing the halos, so thick outlines on
     # later lines or vector symbols cannot cover previously drawn letters.
-    if stroke:_draw_dialogue_pass(draw,xy,text,font,stroke,color)
-    _draw_dialogue_pass(draw,xy,text,font,0,color)
+    if outline_color is None:outline_color="black" if color=="white" else "white"
+    if stroke:_draw_dialogue_pass(draw,xy,text,font,stroke,color,outline_color)
+    _draw_dialogue_pass(draw,xy,text,font,0,color,outline_color)
 
 
-def _draw_dialogue_pass(draw,xy,text,font,stroke=0,color="black"):
-    edge="black" if color=="white" else "white"
+def _draw_dialogue_pass(draw,xy,text,font,stroke=0,color="black",edge="white"):
     lines=text.split('\n');widths=[draw.textlength(measurable(line),font=font) for line in lines]
     line_step=draw.textbbox((0,0),'A',font=font)[3]+2
     max_width=max(widths,default=0)
@@ -213,7 +218,7 @@ def _layout(text, box, font_path, manual_size, auto_fit):
 
 
 def layout(text, box, font_path, maximum, auto_fit):
-    return _layout(text,tuple(box),font_path,maximum,auto_fit)
+    return _layout(normalize_translation(text),tuple(box),font_path,maximum,auto_fit)
 
 
 def background_image(page):
@@ -235,22 +240,44 @@ def render_page(page, font_path='', strict=False):
         if not r.translation.strip():
             warnings.append(f'Balloon {idx+1}: empty translation; original preserved.'); continue
         text,font,bounds,fits=region_layout(r,font_path)
-        if not fits:
-            warnings.append(f'Balloon {idx+1}: text does not fit; enlarge the area or reduce the font size.')
-            if strict:
-                continue
+        # The selection controls positioning, not clipping or export validity.
+        # Oversized text is intentionally rendered at the requested size.
         if not r.transparent:draw.rectangle(r.erase,fill='white')
         x=(r.text_box[0]+r.text_box[2]-(bounds[2]-bounds[0]))/2-bounds[0]
         y=(r.text_box[1]+r.text_box[3]-(bounds[3]-bounds[1]))/2-bounds[1]
-        draw_dialogue(draw,(x,y),text,font,r.outline,r.text_color)
+        draw_dialogue(draw,(x,y),text,font,r.outline,r.text_color,r.outline_color)
     return image,warnings
+
+
+def export_webp_zip(path,pages,font_path=''):
+    """Render one page at a time; publish the archive only after all succeed."""
+    import tempfile,os
+    from PIL import features
+    if not pages:raise ValueError('Open some pages before exporting.')
+    if not features.check('webp'):raise RuntimeError('WebP support is unavailable. Run INSTALL.cmd to repair Pillow.')
+    path=Path(path)
+    fd,temp_name=tempfile.mkstemp(prefix='.webp-export-',suffix='.tmp',dir=path.parent)
+    os.close(fd);temp=Path(temp_name)
+    try:
+        digits=max(3,len(str(len(pages))))
+        with zipfile.ZipFile(temp,'w',zipfile.ZIP_STORED) as archive:
+            for i,page in enumerate(pages,1):
+                rendered,warnings=render_page(page,font_path,strict=True)
+                if warnings:raise ValueError(f'Page {i}: '+ '\n'.join(warnings))
+                with io.BytesIO() as buffer:
+                    rendered.save(buffer,format='WEBP',lossless=True,method=4)
+                    archive.writestr(f'page-{i:0{digits}d}.webp',buffer.getvalue())
+        temp.replace(path)
+    finally:
+        if temp.exists():temp.unlink()
+    return str(path)
 
 
 def save_project(path,pages,font_path,settings=None):
     temp=Path(str(path)+'.tmp')
     try:
         with zipfile.ZipFile(temp,'w',zipfile.ZIP_DEFLATED) as z:
-            meta={'version':3,'font':font_path,'settings':settings or {},'pages':[]}
+            meta={'version':4,'font':font_path,'settings':settings or {},'pages':[]}
             for i,p in enumerate(pages):
                 buf=io.BytesIO(); p.image.save(buf,format='PNG')
                 z.writestr(f'{i}.png',buf.getvalue())
@@ -258,7 +285,8 @@ def save_project(path,pages,font_path,settings=None):
                 for j,patch in enumerate(p.patches):
                     name=f'patch-{i}-{j}.png';buf=io.BytesIO();patch.image.save(buf,format='PNG');z.writestr(name,buf.getvalue())
                     patches.append({'box':patch.box,'file':name})
-                meta['pages'].append({'dpi':p.dpi,'regions':[asdict(r) for r in p.regions],'patches':patches})
+                regions=[dict(asdict(r),translation=normalize_translation(r.translation)) for r in p.regions]
+                meta['pages'].append({'dpi':p.dpi,'regions':regions,'patches':patches})
             z.writestr('project.json',json.dumps(meta,ensure_ascii=False))
         temp.replace(path)
     finally:
@@ -268,11 +296,16 @@ def save_project(path,pages,font_path,settings=None):
 def load_project(path,with_settings=False):
     with zipfile.ZipFile(path) as z:
         meta=json.loads(z.read('project.json'))
-        if meta['version'] not in (1,2,3): raise ValueError('Unsupported project version.')
+        if meta['version'] not in (1,2,3,4): raise ValueError('Unsupported project version.')
         pages=[]
         for i,p in enumerate(meta['pages']):
             image=Image.open(io.BytesIO(z.read(f'{i}.png'))).convert('RGB')
             patches=[BackgroundPatch(item['box'],Image.open(io.BytesIO(z.read(item['file']))).convert('RGB')) for item in p.get('patches',[])]
-            pages.append(Page(image,[Region(**r) for r in p['regions']],p['dpi'],patches))
+            # Preserve the automatic contrast used by older project versions.
+            regions=[]
+            for r in p['regions']:
+                if 'outline_color' not in r:r['outline_color']='black' if r.get('text_color')=='white' else 'white'
+                regions.append(Region(**r))
+            pages.append(Page(image,regions,p['dpi'],patches))
         result=(pages,meta.get('font',''))
         return result+(meta.get('settings',{}),) if with_settings else result

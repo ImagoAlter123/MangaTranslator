@@ -4,10 +4,12 @@ from PySide6.QtCore import Qt, QRectF, Signal, QThread
 from PySide6.QtGui import QImage, QPixmap, QPen, QColor, QPainter, QFontDatabase, QFont, QShortcut, QKeySequence
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,
     QPushButton,QLabel,QComboBox,QTextEdit,QSpinBox,QCheckBox,QListWidget,QFileDialog,
-    QMessageBox,QGraphicsView,QGraphicsScene,QSplitter,QGroupBox,QLineEdit,QScrollArea)
+    QMessageBox,QGraphicsView,QGraphicsScene,QSplitter,QGroupBox,QLineEdit,QScrollArea,QColorDialog)
 from core import Page, Region, BackgroundPatch, DEFAULT_FONT, background_image, region_layout, load_pages,load_multiple,detect_bubbles,render_page,save_project,load_project,layout
 from ai_local import LocalAI
 from languages import language_code
+from text_cleanup import normalize_translation
+from core import export_webp_zip
 
 
 class Worker(QThread):
@@ -59,6 +61,7 @@ class Window(QMainWindow):
         self.button(tools,'Save project',self.save)
         self.button(tools,'Export PDF',self.export_pdf)
         self.button(tools,'Export page as PNG',self.export_png)
+        self.button(tools,'Export all as WebP ZIP',self.export_webp)
         split=QSplitter(); main.addWidget(split,1)
         left=QWidget(); left.setMaximumWidth(255); ll=QVBoxLayout(left); split.addWidget(left)
         self.page_combo=QComboBox(); self.page_combo.currentIndexChanged.connect(self.change_page); ll.addWidget(self.page_combo)
@@ -82,7 +85,7 @@ class Window(QMainWindow):
         rr.addWidget(QLabel('Source language → English'))
         self.language=QComboBox(); self.language.addItem('Japanese','ja'); self.language.addItem('Chinese','ch_sim'); rr.addWidget(self.language)
         from translator_hy import MODEL
-        model_label=QLabel('Translator: Hy-MT2-7B Q8 • local\n'+('Model downloaded' if MODEL.exists() else 'Run INSTALAR_TUDO.cmd to download'))
+        model_label=QLabel('Translator: Hy-MT2-7B Q8 • local\n'+('Model downloaded' if MODEL.exists() else 'Run INSTALL_ALL.cmd to download'))
         model_label.setWordWrap(True);rr.addWidget(model_label)
         rr.addWidget(QLabel('Optional glossary (names / titles)'))
         self.glossary=QLineEdit();self.glossary.setPlaceholderText('Example: 博士 = Doctor; 阿米娅 = Amiya');rr.addWidget(self.glossary)
@@ -96,20 +99,19 @@ class Window(QMainWindow):
         self.target=QTextEdit(); self.target.setMaximumHeight(90); self.target.textChanged.connect(self.edit); rr.addWidget(self.target)
         self.button(rr,'Translate source text to English',self.translate)
         self.button(rr,'Read and translate all balloons',self.batch)
-        self.button(rr,'Retranslate this page with Hy-MT2',lambda:self.batch(True))
         self.font_label=QLabel('Font: CC Wild Words Roman (default)' if self.font else 'Fallback font: Arial'); self.font_label.setWordWrap(True); rr.addWidget(self.font_label)
-        self.button(rr,'Load font (.ttf / .otf)',self.choose_font)
+        self.button(rr,'Apply all translations on this page',self.apply_all)
+        self.button(rr,'Style: black text with white outline',self.outlined_style)
         fontrow=QHBoxLayout(); rr.addLayout(fontrow); fontrow.addWidget(QLabel('Size in pixels:'))
         self.size=QSpinBox(); self.size.setRange(6,2048); self.size.setValue(30); self.size.valueChanged.connect(self.edit); fontrow.addWidget(self.size)
-        self.auto=QCheckBox('Auto font size: fit to area'); self.auto.setChecked(True); self.auto.toggled.connect(self.edit); rr.addWidget(self.auto)
-        rr.addWidget(QLabel('Text color for this balloon:'))
-        self.text_color=QComboBox();self.text_color.addItems(['Black','White']);self.text_color.currentIndexChanged.connect(self.edit);rr.addWidget(self.text_color)
+        rr.addWidget(QLabel('Colors for this balloon:'))
+        self.text_color_button=self.button(rr,'Text color: #000000',lambda:self.choose_color('text_color'))
+        self.outline_color_button=self.button(rr,'Outline color: #FFFFFF',lambda:self.choose_color('outline_color'))
         self.transparent=QCheckBox('Text over artwork (no white box)');self.transparent.toggled.connect(self.edit);rr.addWidget(self.transparent)
         outline_row=QHBoxLayout();rr.addLayout(outline_row);outline_row.addWidget(QLabel('Contrasting outline (px):'))
         self.outline=QSpinBox();self.outline.setRange(0,32);self.outline.valueChanged.connect(self.edit);outline_row.addWidget(self.outline)
-        self.button(rr,'Style: black text with white outline',self.outlined_style)
         self.enabled=QCheckBox('Apply translation to this balloon'); self.enabled.toggled.connect(self.edit); rr.addWidget(self.enabled)
-        self.button(rr,'Apply all translations on this page',self.apply_all)
+        self.button(rr,'Load font (.ttf / .otf)',self.choose_font)
         rr.addWidget(QLabel('All fonts on this page (manual sizes):'))
         sizes=QHBoxLayout();rr.addLayout(sizes)
         self.button(sizes,'Decrease by 2 px',lambda:self.resize_all(-2))
@@ -143,6 +145,12 @@ class Window(QMainWindow):
         return not self.dirty or QMessageBox.question(self,'Unsaved changes','Discard unsaved changes?',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
     def install_pages(self,pages,font='',settings=None):
         self.pages=pages; self.font=font if font and Path(font).exists() else (str(DEFAULT_FONT) if DEFAULT_FONT.exists() else ''); self.history=[]; self.dirty=False
+        # Freeze legacy automatic sizes at their rendered size before editing.
+        for page in pages:
+            for region in page.regions:
+                if region.auto_fit:
+                    if region.translation.strip():region.size=region_layout(region,self.font)[1].size
+                    region.auto_fit=False
         if settings is not None:
             self.loading=True
             language=language_code(settings.get('language','ja'))
@@ -177,24 +185,36 @@ class Window(QMainWindow):
     def select(self,*_):
         r=self.region(); self.loading=True
         self.source.setPlainText(r.original if r else ''); self.target.setPlainText(r.translation if r else '')
-        self.size.setValue(r.size if r else 30); self.auto.setChecked(r.auto_fit if r else True); self.enabled.setChecked(r.enabled if r else False)
-        self.text_color.setCurrentIndex(1 if r and r.text_color=="white" else 0)
+        self.size.setValue(r.size if r else 30); self.enabled.setChecked(r.enabled if r else False)
+        for field,button,label,default in [('text_color',self.text_color_button,'Text color','black'),('outline_color',self.outline_color_button,'Outline color','white')]:
+            color=QColor(getattr(r,field) if r else default)
+            button.setText(f'{label}: {color.name().upper()}')
+            button.setStyleSheet(f'border-left: 14px solid {color.name()};')
+            button.setEnabled(r is not None)
         self.transparent.setChecked(r.transparent if r else False);self.outline.setValue(r.outline if r else 0)
         self.loading=False; self.draw()
     def edit(self,*_):
         if self.loading or not self.region(): return
-        self.checkpoint(); r=self.region(); r.original=self.source.toPlainText(); r.translation=self.target.toPlainText(); r.size=self.size.value(); r.auto_fit=self.auto.isChecked(); r.enabled=self.enabled.isChecked()
-        r.text_color="white" if self.text_color.currentIndex()==1 else "black"
+        self.checkpoint(); r=self.region(); r.original=self.source.toPlainText(); r.translation=normalize_translation(self.target.toPlainText()); r.size=self.size.value(); r.auto_fit=False; r.enabled=self.enabled.isChecked()
+        if self.target.toPlainText()!=r.translation:
+            self.target.blockSignals(True);self.target.setPlainText(r.translation);self.target.blockSignals(False)
         r.transparent=self.transparent.isChecked();r.outline=self.outline.value()
         item=self.list.currentItem()
         if item: item.setText(f'Balloon {self.list.currentRow()+1}'+(' • applied' if r.enabled else ' • review'))
         self.draw()
+    def choose_color(self,field):
+        r=self.region()
+        if r is None:return
+        title='Choose text color' if field=='text_color' else 'Choose outline color'
+        color=QColorDialog.getColor(QColor(getattr(r,field)),self,title,QColorDialog.DontUseNativeDialog)
+        if not color.isValid() or color.name()==QColor(getattr(r,field)).name():return
+        self.checkpoint();setattr(r,field,color.name());self.select()
     def outlined_style(self):
         r=self.region()
         if r is None:return
         actual=region_layout(r,self.font)[1].size if r.translation.strip() else r.size
         self.checkpoint()
-        r.text_color='black';r.transparent=True
+        r.text_color='black';r.outline_color='white';r.transparent=True
         r.outline=max(2,min(32,round(actual*.10)))
         self.select()
         self.statusBar().showMessage('Style set for this balloon. Adjust Contrasting outline for thickness and check Apply translation to display it.')
@@ -219,10 +239,7 @@ class Window(QMainWindow):
         p=self.page()
         if not p: return
         selected=self.region()
-        self.size.setEnabled(bool(selected) and not selected.auto_fit)
-        if selected and selected.auto_fit and selected.translation.strip():
-            actual=region_layout(selected,self.font)[1].size
-            self.size.blockSignals(True);self.size.setMaximum(2048);self.size.setValue(actual);self.size.blockSignals(False)
+        self.size.setEnabled(bool(selected))
         try: im,warnings=render_page(p,self.font) if not self.original_view.isChecked() else (p.image,[])
         except Exception as e: self.error(str(e)); return
         self.hint.setText('\n'.join(warnings) if warnings else 'Drag to define the selected area. Review the text before applying.')
@@ -341,6 +358,17 @@ class Window(QMainWindow):
                 out.save(path)
             self.statusBar().showMessage('PDF exported: '+path)
         except Exception as e:self.error(str(e))
+    def export_webp(self):
+        if not self.pages or self.worker:return
+        if not self.font and any(r.enabled and r.translation.strip() for p in self.pages for r in p.regions):
+            self.error('Load a font before exporting.');return
+        path,_=QFileDialog.getSaveFileName(self,'Export all pages as WebP ZIP','','ZIP archive (*.zip)')
+        if not path:return
+        if not path.lower().endswith('.zip'):path+='.zip'
+        pages=list(self.pages);font=self.font
+        self.run(lambda:export_webp_zip(path,pages,font),
+                 lambda saved:self.statusBar().showMessage('WebP ZIP exported: '+saved),
+                 f'Exporting {len(pages)} pages as lossless WebP in a ZIP…')
     def export_png(self):
         try:
             images=self.export_images([self.index])

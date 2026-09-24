@@ -22,7 +22,7 @@ class LocalAI:
             import torch
             torch.set_num_threads(min(4,os.cpu_count() or 1))
         except ImportError as e:
-            raise RuntimeError('Install AI with INSTALAR_IA.cmd and try again.') from e
+            raise RuntimeError('Install AI with INSTALL_AI.cmd and try again.') from e
         code=language_code(language)
         if code not in self.readers:
             self.readers[code]=easyocr.Reader([code,'en'],gpu=False,verbose=False,
